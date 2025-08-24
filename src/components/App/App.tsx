@@ -1,35 +1,72 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import css from "./App.module.css";
+import SearchBox from "../SearchBox/SearchBox";
+import { fetchNotes } from "../../services/noteService";
+import type { FetchNotesResponse } from "../../services/noteService";
+import NoteForm from "../NoteForm/NoteForm";
+import Modal from "../Modal/Modal";
+import Pagination from "../Pagination/Pagination";
+import NoteList from "../NoteList/NoteList";
+import { useDebounce } from "use-debounce";
+import Loader from "../Loader/Loader";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search, 500);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const { data, isFetching, isError, error } = useQuery<FetchNotesResponse>({
+    queryKey: ["notes", debouncedSearch, page],
+    queryFn: function() {
+      return fetchNotes(debouncedSearch, page);
+    },
+    placeholderData: function(prev) {
+      return prev;
+    },
+  });
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setPage(1);
+  }
+
+  function handlePageChange(selectedPage: number) {
+    setPage(selectedPage);
+  }
+
+  function closeModal() {
+    setIsModalOpen(false);
+  }
+
+  function openModal() {
+    setIsModalOpen(true);
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div className={css.app}>
+      <header className={css.toolbar}>
+        <SearchBox value={search} onChange={handleSearchChange} />
+        {data && data.totalPages > 1 && (
+          <Pagination pageCount={data.totalPages} currentPage={page} onPageChange={handlePageChange} />
+        )}
+        <button className={css.button} onClick={openModal}>
+          Create note +
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+      </header>
 
-export default App
+      {isFetching && <Loader />}
+      {isError && <p>Error: {(error as Error).message}</p>}
+      {data && data.notes.length === 0 && !isFetching && (
+        <p className={css.notfound}>No notes found for "{debouncedSearch}"</p>
+      )}
+      {data && data.notes && data.notes.length > 0 && <NoteList notes={data.notes} />}
+      {isModalOpen && (
+        <Modal onClose={closeModal}>
+          <NoteForm onCancel={closeModal} />
+        </Modal>
+      )}
+    </div>
+  );
+}
